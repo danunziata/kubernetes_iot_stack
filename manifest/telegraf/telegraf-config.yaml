@@ -1,0 +1,77 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  labels:
+    app: telegraf
+  name: telegraf-config
+  namespace: tcp-ip
+data:
+  telegraf.conf: |
+    [global_tags]
+      project = "tcpipfinalproject"
+    
+    [agent]
+      interval = "10s"
+      round_interval = true
+      metric_batch_size = 1000
+      metric_buffer_limit = 10000
+      collection_jitter = "0s"
+      flush_interval = "10s"
+      flush_jitter = "0s"
+      precision = "0s"
+      hostname = "telegrafoutput"
+      omit_hostname = false
+    
+    # Input plugin for Sonoff sensor data
+    [[inputs.mqtt_consumer]]
+      servers = ["mqtt://10.43.162.148:1883"]
+      topics = ["sensor/sonoff/#"]
+      qos = 2
+      username = "sonoff"
+      password = "labiot2024"
+      data_format = "json"
+      name_override = "sonoff_measurement"
+      tag_keys = ["ENERGY"]
+    
+      # Certificados
+      # tls_ca = "/home/andres/Aplicaciones_TCP_IP/docs/03-Proyecto_Final/proyecto/server/seguridad/certs/ca.pem"
+      # tls_cert = "/home/andres/Aplicaciones_TCP_IP/docs/03-Proyecto_Final/proyecto/server/seguridad/certs/client.pem"
+      # tls_key = "/home/andres/Aplicaciones_TCP_IP/docs/03-Proyecto_Final/proyecto/server/seguridad/certs/client.key"
+    
+    # Input plugin for DHT11 sensor data
+    [[inputs.mqtt_consumer]]
+      servers = ["mqtt://10.43.162.148:1883"]
+      topics = ["sensor/dht11/#"]
+      qos = 2
+      username = "dht11"
+      password = "sebacrack"
+      data_format = "json"
+      name_override = "dht11_measurement"
+      tag_keys = ["DHT11"]
+    
+      # Certificados
+      # tls_ca = "/home/andres/Aplicaciones_TCP_IP/docs/03-Proyecto_Final/proyecto/server/seguridad/certs/ca.pem"
+      # tls_cert = "/home/andres/Aplicaciones_TCP_IP/docs/03-Proyecto_Final/proyecto/server/seguridad/certs/client.pem"
+      # tls_key = "/home/andres/Aplicaciones_TCP_IP/docs/03-Proyecto_Final/proyecto/server/seguridad/certs/client.key"
+    
+    # Input plugin for Raspy sensor data
+    [[inputs.mqtt_consumer]]
+      servers = ["mqtt://10.43.162.148:1883"]
+      topics = ["sensor/raspy/#"]
+      qos = 2
+      username = "raspy"
+      password = "tcpip2024"
+      data_format = "json"
+      name_override = "raspy_measurement"
+      tag_keys = ["RASPY"]
+    
+      # Certificados
+      # tls_ca = "/home/andres/Aplicaciones_TCP_IP/docs/03-Proyecto_Final/proyecto/server/seguridad/certs/ca.pem"
+      # tls_cert = "/home/andres/Aplicaciones_TCP_IP/docs/03-Proyecto_Final/proyecto/server/seguridad/certs/client.pem"
+      # tls_key = "/home/andres/Aplicaciones_TCP_IP/docs/03-Proyecto_Final/proyecto/server/seguridad/certs/client.key"
+    
+    [[outputs.influxdb_v2]]
+      urls = ["http://influxdb:8086"]
+      token = "labtcpip-iotdata-auth-token"
+      organization = "labiot2024"
+      bucket = "iotdata"

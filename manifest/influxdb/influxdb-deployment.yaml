@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: influxdb
+  namespace: tcp-ip
+  labels:
+    app: influxdb
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: influxdb
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        server-default: "true"
+        app: influxdb
+    spec:
+      containers:
+        - name: influxdb
+          image: influxdb:2.2.0-alpine
+          securityContext:
+            runAsGroup: 1000
+            allowPrivilegeEscalation: false
+          env:
+          - name: DOCKER_INFLUXDB_INIT_MODE
+            value: setup
+          - name: DOCKER_INFLUXDB_INIT_USERNAME
+            value: labiot
+          - name: DOCKER_INFLUXDB_INIT_PASSWORD
+            value: labiot2024
+          - name: DOCKER_INFLUXDB_INIT_ORG
+            value: labiot2024
+          - name: DOCKER_INFLUXDB_INIT_BUCKET
+            value: iotdata
+          - name: DOCKER_INFLUXDB_INIT_RETENTION
+            value: 1w
+          - name: DOCKER_INFLUXDB_INIT_ADMIN_TOKEN
+            value: labtcpip-iotdata-auth-token
+          ports:
+            - containerPort: 8086
+              hostPort: 8086
+              protocol: TCP
+          volumeMounts:
+            - mountPath: /var/lib/influxdb2
+              name: influxdb-var
+            - mountPath: /etc/influxdb2
+              name: influxdb-etc
+      restartPolicy: Always
+      volumes:
+        - name: influxdb-var
+          persistentVolumeClaim:
+            claimName: influxdb-var
+        - name: influxdb-etc
+          persistentVolumeClaim:
+            claimName: influxdb-etc
