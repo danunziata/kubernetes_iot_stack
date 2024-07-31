@@ -37,6 +37,8 @@ kubectl apply -f manifest/streamlit
 
 kubectl apply -f manifest/telegraf
 
+kubectl apply -f manifest/jenkins
+
 echo -e "Grafana's Installation\n"
 
 # Add Helm repo and update
@@ -71,3 +73,26 @@ echo -e "\nTo access the Grafana service, open a new terminal and execute the fo
 echo "kubectl port-forward --namespace $NAMESPACE service/loki-grafana 3000:80"
 echo -e "\nThen, open your browser and go to:"
 echo "http://localhost:3000"
+
+# Grype
+
+curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sudo sh -s -- -b /usr/local/bin
+
+# Kubeseal
+
+KUBESEAL_VERSION='0.26.0'
+curl -OL "https://github.com/bitnami-labs/sealed-secrets/releases/download/v${KUBESEAL_VERSION:?}/kubeseal-${KUBESEAL_VERSION:?}-linux-amd64.tar.gz"
+tar -xvzf kubeseal-${KUBESEAL_VERSION:?}-linux-amd64.tar.gz kubeseal
+sudo install -m 755 kubeseal /usr/local/bin/kubeseal
+
+# Kubescape
+
+curl -s https://raw.githubusercontent.com/kubescape/kubescape/master/install.sh | /bin/bash
+export PATH=$PATH:/home/<user>/.kubescape/bin 
+
+# Velero
+
+wget https://github.com/vmware-tanzu/velero/releases/download/v1.13.2/velero-v1.13.2-linux-amd64.tar.gz
+tar -xvf velero-v1.13.2-linux-amd64.tar.gz
+sudo mv velero-v1.13.2-linux-amd64/velero /usr/local/bin
+rm -rf velero-v1.13.2-linux-amd64
