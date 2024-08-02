@@ -90,6 +90,10 @@ curl -OL "https://github.com/bitnami-labs/sealed-secrets/releases/download/v${KU
 tar -xvzf kubeseal-${KUBESEAL_VERSION:?}-linux-amd64.tar.gz kubeseal
 sudo install -m 755 kubeseal /usr/local/bin/kubeseal
 
+helm repo add sealed-secrets https://bitnami-labs.github.io/sealed-secrets
+helm repo update
+helm install sealed-secrets -n kube-system --set-string fullnameOverride=sealed-secrets-controller sealed-secrets/sealed-secrets
+
 # Kubescape
 
 echo -e "\nYou are installing Kubescape..."
