@@ -81,3 +81,187 @@ kubectl apply -f mysealedsecret-ejemplo.yaml
 ```
 
 De esta forma el cluster desencripta el secret y lo coloca en el cluster de Kubernetes
+
+## Vault
+
+HashiCorp Vault es una herramienta de gestión de secretos que se utiliza para controlar el acceso a secretos sensibles, como tokens de API, contraseñas, certificados y claves de cifrado. Aquí hay una breve descripción de cómo funciona Vault:
+
+1. **Almacenamiento Seguro de Secretos**: Vault permite almacenar secretos en un almacenamiento seguro y centralizado. Los secretos pueden ser estáticos (como contraseñas) o dinámicos (como tokens de acceso que expiran después de un tiempo).
+
+2. **Autenticación**: Los usuarios y aplicaciones deben autenticarse antes de acceder a los secretos. Vault admite múltiples métodos de autenticación, como LDAP, GitHub, tokens, y métodos de autenticación de nube como AWS IAM.
+
+3. **Control de Acceso**: Vault utiliza políticas para controlar quién puede acceder a qué secretos. Las políticas definen qué operaciones (lectura, escritura, borrado) están permitidas en qué caminos dentro del almacenamiento de secretos.
+
+4. **Rotación de Secretos**: Vault puede rotar automáticamente los secretos, como contraseñas de bases de datos, a intervalos regulares para mejorar la seguridad. Esto ayuda a minimizar el riesgo de exposición a largo plazo.
+
+5. **Auditoría**: Vault mantiene un registro de auditoría detallado de todas las operaciones que se realizan, proporcionando visibilidad y rastreo de acceso a los secretos.
+
+6. **Cifrado**: Todos los datos almacenados en Vault están cifrados tanto en tránsito como en reposo. Vault utiliza algoritmos de cifrado fuertes para proteger los datos sensibles.
+
+7. **Almacenamiento Dinámico de Credenciales**: Vault puede generar credenciales temporales bajo demanda para servicios como bases de datos y nubes. Esto reduce la necesidad de gestionar credenciales estáticas.
+
+8. **API**: Vault proporciona una API RESTful que permite a las aplicaciones interactuar con Vault para gestionar secretos de manera programática.
+
+### Implementación
+
+El clúster de servidores Vault se puede implementar directamente en Kubernetes mediante Helm Charts (recomendado). Además de los pods Stateful de Vault, el inyectador de agentes de Vault también se ejecuta como un pod que aprovecha el webhook de admisión mutable de Kubernetes para interceptar pods que definen anotaciones específicas e inyectar un contenedor del agente Vault para gestionar estos secretos. Esto puede ser utilizado por aplicaciones que se ejecutan dentro de Kubernetes, así como por aplicaciones externas a Kubernetes.
+
+Un token de cuenta de servicio (token JWT) del pod se pasa al servidor Vault. El servidor Vault se autentica contra Kubernetes a través de la API TokenReview para obtener la cuenta de servicio y el namespace asociados al token JWT. El servidor de la API de Kubernetes devuelve los detalles de la cuenta y, a partir de ahí, el servidor Vault valida si la cuenta de servicio está autorizada para leer secretos utilizando las políticas adjuntas. Después de una validación exitosa, el servidor Vault devuelve un token. En una llamada de API posterior, se incluye el token de Vault para recuperar los secretos.
+
+Comenzamos instalando Vault a traves del Helm Chart oficial
+
+```sh
+$ helm repo add hashicorp https://helm.releases.hashicorp.com
+"hashicorp" has been added to your repositories
+$ helm repo update
+Hang tight while we grab the latest from your chart repositories......Successfully got an update from the "hashicorp" chart repositoryUpdate Complete. ⎈Happy Helming!⎈
+$ helm install vault hashicorp/vault --set "server.dev.enabled=true"
+```
+
+La opción `server.dev.enabled=true` configura Vault en modo de desarrollo para mayor simplicidad. Para implementaciones en producción, necesitarás configurar Vault según tus requisitos de seguridad y operativos.
+
+De esta manera, El pod Vault y el agente de inyeccion de Vault se ejecutaran en nuestro cluster.
+
+```
+$ kubectl get pods
+NAME                                    READY   STATUS    RESTARTS   AGE
+vault-0                                 1/1     Running   0          18s
+vault-agent-injector-5989b47887-x86dd   1/1     Running   0          19s
+```
+
+Vamos a crear un secreto de ejemplo para una conexión a una base de datos Postgres.
+
+Activaremos el motor de secretos kv-2 y pondremos un usuario y contraseña en el path `demo/database/config`.
+
+```sh
+$ kubectl exec -it vault-0 -- sh
+$ vault secrets enable -path=demo kv-v2
+$ vault kv put demo/database/config username=postgres
+```
+
+Las políticas de acceso en Vault determinan qué secretos puede acceder una entidad autenticada y qué operaciones pueden realizar en esos secretos. Creamos una política que especifique el nivel de acceso a los secretos.
+
+```sh
+$ vault policy write demo-policy - <<EOF
+path "demo/data/database/config" {
+  capabilities = ["read"]
+}
+EOF
+```
+
+El método de autenticación de Kubernetes de Vault permite a los pods autenticarse utilizando sus tokens de Cuenta de Servicio de Kubernetes, habilitando el acceso seguro a los secretos almacenados en Vault.
+
+Por eso, habilitamos el método de autenticación de Kubernetes dentro de Vault. Este paso activa el backend de autenticación necesario para que los pods de Kubernetes se autentiquen con Vault.
+
+```sh
+$ vault auth enable kubernetes
+```
+
+Vault necesita detalles sobre tu clúster de Kubernetes para verificar los tokens de Cuenta de Servicio utilizados para la autenticación. Esto incluye el token JWT de una cuenta de servicio que tenga permisos para verificar otros tokens, el host de la API de Kubernetes y el certificado CA del clúster.
+
+```sh
+$ vault write auth/kubernetes/config \    
+ token_reviewer_jwt="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)" \    kubernetes_host=https://${KUBERNETES_PORT_443_TCP_ADDR}:443 \    kubernetes_ca_cert=@/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+```
+
+Después de crear las políticas de acceso, debes vincularlas a entidades específicas de Kubernetes, como cuentas de servicio o namespaces. Esta vinculación asegura que solo las aplicaciones autorizadas puedan acceder a los secretos especificados.
+
+```sh
+$ vault write auth/kubernetes/role/demo-auth \
+    bound_service_account_names=demo-user \
+    bound_service_account_namespaces=default \
+    policies=demo-policy \
+    ttl=24h
+```
+
+El rol conecta la cuenta de servicio de Kubernetes, demo-user, y el namespace, default, con la política de Vault, demo-policy. Los tokens devueltos después de la autenticación son válidos por 24 horas.
+
+Claro, aquí tienes la traducción al español:
+
+Vamos a crear una cuenta de servicio de Kubernetes llamada demo-user en el namespace default, como se indica en la política de Vault:
+
+```sh
+$ kubectl create serviceaccount demo-user
+```
+
+Y por ultimo, para fines demostrativos, desplegamos PostgreSQL como un StatefulSet e inyectamos el secreto.
+
+```yaml
+# postgres.yaml
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+spec:
+  serviceName: psql-svc
+  replicas: 1
+  updateStrategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+      annotations:
+        vault.hashicorp.com/agent-inject: "true"
+        vault.hashicorp.com/role: "demo-auth"
+        vault.hashicorp.com/agent-inject-secret-pgpass: "demo/data/database/config"
+        vault.hashicorp.com/agent-inject-template-pgpass: |
+          {{- with secret "demo/data/database/config" -}}
+          localhost:5432:postgres:{{ .Data.data.username }}:{{ .Data.data.password }}
+          {{- end -}}
+    spec:
+      terminationGracePeriodSeconds: 10
+      serviceAccountName: demo-user
+      initContainers:
+      containers:
+        - name: postgres
+          image: postgres:10.1
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 5432
+          env:
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          volumeMounts:
+            - name: postgredb
+              mountPath: /var/lib/postgresql/data
+              readOnly: false
+      volumeClaimTemplates:
+        - metadata:
+            name: postgredb
+          spec:
+            accessModes: [ "ReadWriteOnce" ]
+            storageClassName: gp2
+            resources:
+              requests:
+                storage: 3Gi
+```
+
+
+
+Explicación:
+
+**agent-inject** habilita el servicio Vault Agent Injector.
+**role** es el rol de autenticación de Kubernetes de Vault.
+**agent-inject-secret-FILEPATH** define la ruta del archivo pgpass escrito en el directorio /vault/secrets. El valor es la ruta al secreto definido en Vault.
+**agent-inject-template-FILEPATH** define el archivo y la plantilla del agente Vault que se aplica a los datos del secreto.
+
+Lo que ocurre en realidad es que las anotaciones precedentes (prefijadas con vault.hashicorp.com) indican al pod vault-agent-injector, a través de una configuración de webhook mutable predefinida, que inyecte un contenedor init llamado vault-agent-init y un contenedor sidecar llamado vault-agent, así como un volumen de tipo emptyDir llamado vault-secrets. Además, el volumen vault-secrets se monta en el contenedor init, el contenedor sidecar y el contenedor de la aplicación con el directorio /vault/secrets/. El secreto se almacena en el volumen vault-secrets.
+
+Aplicamos el manifiesto y esperamos a que este corriendo con los 2/2 pods listos para poder asi obtener los secrets dentro de la base de datos
+
+```sh
+$ kubectl apply -f postgres.yaml
+$ kubectl exec -it postgres-0 -c postgres -- sh
+$ cat /vault/secrets/pgpass
+localhost:5432:postgres:postgres:pass123
+```
+
+# Referencias
+
+https://medium.com/@pratyush.mathur/secrets-management-using-vault-in-k8s-272462c37fd8
+
+https://overcast.blog/managing-secrets-in-kubernetes-with-hashicorp-vault-39de290d3c46
