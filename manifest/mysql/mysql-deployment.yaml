@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  namespace: tcp-ip
+  labels:
+    app: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        server-default: "true"
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:latest
+        ports:
+        - containerPort: 3306
+          hostPort: 3306
+          protocol: TCP
+        securityContext:
+          runAsGroup: 1000
+          allowPrivilegeEscalation: false
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: "labiot2024"
+        - name: MYSQL_DATABASE
+          value: "emqx_auth"
+        volumeMounts:
+        - mountPath: /var/lib/mysql
+          name: mysql-var
+        - mountPath: /docker-entrypoint-initdb.d/init.sql
+          name: mysql-init
+          subPath: init.sql
+      restartPolicy: Always
+      volumes:
+      - name: mysql-var
+        persistentVolumeClaim:
+          claimName: mysql-var
+      - name: mysql-init
+        configMap:
+          name: mysql-init
+

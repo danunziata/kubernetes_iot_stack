@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: streamlit
+  namespace: tcp-ip
+  labels:
+    app: streamlit
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: streamlit
+  template:
+    metadata:
+      labels:
+        server-default: "true"
+        app: streamlit
+    spec:
+      containers:
+        - name: streamlit
+          image: federodriguez16/sensor:latest
+          securityContext:
+            runAsGroup: 1000
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+          env:
+            - name: INFLUXDB_BUCKET
+              value: iotdata
+            - name: INFLUXDB_ORG
+              value: labiot2024
+            - name: INFLUXDB_TOKEN
+              value: labtcpip-iotdata-auth-token
+            - name: INFLUXDB_URL
+              value: http://influxdb:8086
+          ports:
+            - containerPort: 8501
+              hostPort: 8501
+              protocol: TCP
+      restartPolicy: Always

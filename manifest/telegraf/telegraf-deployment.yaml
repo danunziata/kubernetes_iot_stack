@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: telegraf
+  namespace: tcp-ip
+  labels:
+    app: telegraf
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: telegraf
+  template:
+    metadata:
+      labels:
+        server-default: "true"
+        app: telegraf
+    spec:
+      containers:
+        - name: telegraf
+          image: telegraf:1.22.4
+          securityContext:
+            runAsGroup: 1000
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false 
+          volumeMounts:
+            - mountPath: /etc/telegraf/telegraf.conf
+              name: telegraf-config
+              subPath: telegraf.conf
+            - mountPath: /etc/telegraf/certs
+              name: telegraf-certs
+      restartPolicy: Always
+      volumes:
+        - name: telegraf-config
+          configMap:
+            name: telegraf-config
+            items:
+              - key: telegraf.conf
+                path: telegraf.conf
+        - name: telegraf-certs
+          persistentVolumeClaim:
+            claimName: telegraf-certs
